@@ -181,7 +181,7 @@ class ProxmoxClient(object):
         storages = []
         for storage in self.client.nodes(node).storage.get():
             if ("images" in storage['content'].split(",")
-                    and storage['type'] in ("dir", "lvm", "lvmthin", "nfs")):
+                    and storage['type'] in ("dir", "lvm", "lvmthin", "nfs", "zfspool")):
                 storages.append(storage['storage'])
         return storages
 
@@ -378,6 +378,10 @@ class ProxmoxClient(object):
                 logger.warning("Provided disk size was too small, "
                                "increasing to {0}K".format(image_size))
                 disk_size = image_size
+						
+            if image_size < 1024:
+                logger.warning("Increasing disk size to 1024K to work around ZFS block size.")
+                disk_size = 1024
 
             self._allocate_disk(ssh_session, storage, vmid, diskname,
                                 disk_size, storagename, disk_format)
@@ -462,7 +466,7 @@ class ProxmoxClient(object):
         diskname = "vm-{0}-{1}".format(vmid, disk_label)
         storagename = "{0}:{1}".format(storage, diskname)
 
-        logger.info("Uploading to LVM storage")
+        logger.info("Uploading to LVM or ZFS storage")
         # LVM only supports raw disks, overwrite the disk_format here.
         self._upload_to_storage(ssh_session, storage, vmid, filename,
                                 diskname, storagename, disk_format="raw",
@@ -505,14 +509,14 @@ class ProxmoxClient(object):
                 storage=storage, vmid=vmid, filename=filename,
                 disk_label=disk_label, disk_format=disk_format,
                 disk_size=disk_size)
-        elif _type == "lvm" or _type == "lvmthin":
+        elif _type == "lvm" or _type == "lvmthin" or _type == "zfspool":
             diskname = self._upload_to_lvm_storage(
                 storage=storage, vmid=vmid, filename=filename,
                 disk_label=disk_label, disk_format=disk_format,
                 disk_size=disk_size)
         else:
             raise ValueError(
-                "Only dir, lvm, and lvmthin storage are supported at this time")
+                "Only dir, lvm, lvmthin, nfs and zfspool storage are supported at this time")
         return diskname
 
     def attach_seed_iso(self, node, storage, vmid, iso_file):
